@@ -1,0 +1,48 @@
+# Default rsync filter file
+# This file contains patterns for files and directories that should be excluded from sync
+
+# Git and GitHub related
+- .git/
+- .gitignore
+- .gitattributes
+- .github/
+
+# Documentation and license files
+- README*
+- LICENSE*
+- CHANGELOG*
+- CONTRIBUTING*
+
+# Development tool configurations
+- .vscode/
+- .idea/
+- *.sublime-*
+- .editorconfig
+
+# System files
+- .DS_Store
+- Thumbs.db
+- desktop.ini
+
+# Testing and build tools
+- tests/
+- test/
+- spec/
+- coverage/
+- node_modules/
+- vendor/
+- composer.lock
+- package-lock.json
+- yarn.lock
+
+# Deployment and temporary files
+- deploy/
+- *.bak
+- *.tmp
+- *.log
+- .env*
+- .env.*
+
+# Action specific files
+- action.yml
+- action/

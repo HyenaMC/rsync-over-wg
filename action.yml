@@ -1,0 +1,192 @@
+name: 'Rsync over WireGuard'
+description: 'Connect to a WireGuard network and sync files to a remote server'
+author: 'kpAjun @HyenaMC'
+branding:
+  icon: 'upload-cloud'
+  color: 'blue'
+
+inputs:
+  # WireGuard Connection Parameters
+  wireguard_private_key:
+    description: 'WireGuard private key'
+    required: true
+  wireguard_local_ip:
+    description: 'Local WireGuard IP (e.g., 192.168.1.2/24)'
+    required: true
+  wireguard_peer_ip:
+    description: 'Peer WireGuard IP (e.g., 192.168.1.1/24)'
+    required: true
+  wireguard_peer_public_key:
+    description: 'Peer WireGuard public key'
+    required: true
+  wireguard_peer_endpoint:
+    description: 'Peer endpoint (e.g., 1.2.3.4:51820)'
+    required: true
+  wireguard_local_port:
+    description: 'Local WireGuard port'
+    required: false
+    default: '51820'
+
+  # SSH Connection Parameters
+  ssh_private_key:
+    description: 'SSH private key for remote server'
+    required: true
+  ssh_user:
+    description: 'SSH username'
+    required: true
+  ssh_port:
+    description: 'SSH port'
+    required: false
+    default: '22'
+
+  # Rsync Parameters
+  source_path:
+    description: 'Source path in repository (default: repository root)'
+    required: false
+    default: './'
+  target_path:
+    description: 'Target path on remote server'
+    required: true
+  sync_mode:
+    description: 'Sync mode: overwrite (only update existing files) or clean_copy (delete non-existent files)'
+    required: false
+    default: 'overwrite'
+    type: choice
+    options:
+      - overwrite
+      - clean_copy
+  exclude_patterns:
+    description: 'Comma-separated list of additional patterns to exclude'
+    required: false
+    default: ''
+  protect_patterns:
+    description: 'Comma-separated list of patterns to protect from deletion'
+    required: false
+    default: ''
+  custom_rsync_filter:
+    description: 'Custom rsync filter file path in repository'
+    required: false
+    default: ''
+
+  # Git Parameters
+  repository:
+    description: 'Repository to sync (default: current repository)'
+    required: false
+    default: ${{ github.repository }}
+  ref:
+    description: 'Git ref to sync (branch, tag, or SHA)'
+    required: false
+    default: ${{ github.sha }}
+
+  # Debug Parameters
+  dry_run:
+    description: 'Dry run mode (show what would be done without actually doing it)'
+    required: false
+    default: 'false'
+    type: boolean
+  debug:
+    description: 'Enable debug output'
+    required: false
+    default: 'false'
+    type: boolean
+
+outputs:
+  sync_status:
+    description: 'Status of the sync operation (success/failure)'
+  sync_files_count:
+    description: 'Number of files synced'
+  sync_bytes_transferred:
+    description: 'Number of bytes transferred'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+        
+    - name: Setup WireGuard
+      shell: bash
+      run: ${{ github.action_path }}/action/wireguard-setup.sh
+      env:
+        WIREGUARD_PRIVATE_KEY: ${{ inputs.wireguard_private_key }}
+        WIREGUARD_LOCAL_IP: ${{ inputs.wireguard_local_ip }}
+        WIREGUARD_PEER_IP: ${{ inputs.wireguard_peer_ip }}
+        WIREGUARD_PEER_PUBLIC_KEY: ${{ inputs.wireguard_peer_public_key }}
+        WIREGUARD_PEER_ENDPOINT: ${{ inputs.wireguard_peer_endpoint }}
+        WIREGUARD_LOCAL_PORT: ${{ inputs.wireguard_local_port }}
+        DEBUG: ${{ inputs.debug }}
+        
+    - name: Verify WireGuard connection
+      shell: bash
+      run: |
+        sudo wg show
+        ping -c 3 ${{ inputs.wireguard_peer_ip }}
+        
+    - name: Setup SSH key
+      shell: bash
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ inputs.ssh_private_key }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -p ${{ inputs.ssh_port }} ${{ inputs.wireguard_peer_ip }} >> ~/.ssh/known_hosts
+        
+    - name: Prepare rsync filter
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.custom_rsync_filter }}" ] && [ -f "${{ inputs.custom_rsync_filter }}" ]; then
+          echo "Using custom rsync filter file: ${{ inputs.custom_rsync_filter }}"
+          cp "${{ inputs.custom_rsync_filter }}" .rsync-filter
+        else
+          echo "Using default rsync filter"
+          cp "${{ github.action_path }}/action/rsync-filter" .rsync-filter
+        fi
+        
+        # Add additional exclude patterns
+        if [ -n "${{ inputs.exclude_patterns }}" ]; then
+          IFS=',' read -ra PATTERNS <<< "${{ inputs.exclude_patterns }}"
+          for pattern in "${PATTERNS[@]}"; do
+            pattern=$(echo "$pattern" | xargs)  # trim whitespace
+            if [ -n "$pattern" ]; then
+              echo "- $pattern" >> .rsync-filter
+            fi
+          done
+        fi
+        
+        # Add protect patterns
+        if [ -n "${{ inputs.protect_patterns }}" ]; then
+          IFS=',' read -ra PATTERNS <<< "${{ inputs.protect_patterns }}"
+          for pattern in "${PATTERNS[@]}"; do
+            pattern=$(echo "$pattern" | xargs)  # trim whitespace
+            if [ -n "$pattern" ]; then
+              echo "protect $pattern" >> .rsync-filter
+              echo "protect $pattern/**" >> .rsync-filter
+            fi
+          done
+        fi
+        
+        echo "Final rsync filter content:"
+        cat .rsync-filter
+        
+    - name: Execute sync
+      id: sync
+      shell: bash
+      run: ${{ github.action_path }}/action/entrypoint.sh
+      env:
+        SOURCE_PATH: ${{ inputs.source_path }}
+        TARGET_PATH: ${{ inputs.target_path }}
+        SYNC_MODE: ${{ inputs.sync_mode }}
+        SSH_USER: ${{ inputs.ssh_user }}
+        SSH_PORT: ${{ inputs.ssh_port }}
+        PEER_IP: ${{ inputs.wireguard_peer_ip }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        DEBUG: ${{ inputs.debug }}
+        
+    - name: Set outputs
+      shell: bash
+      run: |
+        echo "sync_status=${{ steps.sync.outputs.status }}" >> $GITHUB_OUTPUT
+        echo "sync_files_count=${{ steps.sync.outputs.files_count }}" >> $GITHUB_OUTPUT
+        echo "sync_bytes_transferred=${{ steps.sync.outputs.bytes_transferred }}" >> $GITHUB_OUTPUT
