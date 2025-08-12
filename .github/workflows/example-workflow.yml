@@ -50,6 +50,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Sync files via WireGuard
         id: sync
         uses: ./  # Use the action in the same repository
@@ -77,7 +80,8 @@ jobs:
           ref: ${{ github.event.inputs.branch || github.sha }}
           
           # Debug parameters
-          dry_run: ${{ github.event.inputs.dry_run || false }}
+          # dry_run: ${{ github.event.inputs.dry_run || false }}
+          dry_run: true
           debug: true
           
       - name: Display sync results
