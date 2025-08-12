@@ -59,14 +59,14 @@ jobs:
         with:
           # WireGuard parameters
           wireguard_private_key: ${{ secrets.WIREGUARD_PRIVATE_KEY }}
-          wireguard_local_ip: 192.168.1.2/24
-          wireguard_peer_ip: 192.168.1.1/24
+          wireguard_local_ip: 10.8.0.7/24
+          wireguard_peer_ip: 192.168.2.124/24
           wireguard_peer_public_key: ${{ secrets.WIREGUARD_PEER_PUBLIC_KEY }}
           wireguard_peer_endpoint: ${{ secrets.WIREGUARD_PEER_ENDPOINT }}
           
           # SSH parameters
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-          ssh_user: ubuntu
+          ssh_user: kpajun
           ssh_port: 22
           
           # Sync parameters
