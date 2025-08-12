@@ -65,6 +65,12 @@ inputs:
     required: false
     default: ''
 
+  # Auto-install rsync on remote if missing
+  auto_install_rsync_on_target:
+    description: 'If true, attempts to install rsync on the remote host when not present'
+    required: false
+    default: 'true'
+
 runs:
   using: 'composite'
   steps:
@@ -108,6 +114,60 @@ runs:
         script: |
           set -e
           ${{ inputs.pre_script }}
+
+    - name: Ensure rsync on remote
+      if: ${{ inputs.auto_install_rsync_on_target == 'true' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.remote_host }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_private_key }}
+        port: ${{ inputs.ssh_port }}
+        script: |
+          set -e
+          if command -v rsync >/dev/null 2>&1; then
+            echo "rsync already installed on remote."
+            exit 0
+          fi
+          echo "rsync not found on remote; attempting installation..."
+          # Determine sudo availability (no sudo if already root)
+          SUDO=""
+          if [ "$(id -u)" != "0" ] && command -v sudo >/dev/null 2>&1; then
+            SUDO="sudo"
+          fi
+          # Try common package managers
+          if command -v apt-get >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive $SUDO apt-get update -y
+            DEBIAN_FRONTEND=noninteractive $SUDO apt-get install -y rsync
+          elif command -v apt >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive $SUDO apt update -y
+            DEBIAN_FRONTEND=noninteractive $SUDO apt install -y rsync
+          elif command -v yum >/dev/null 2>&1; then
+            $SUDO yum install -y rsync
+          elif command -v dnf >/dev/null 2>&1; then
+            $SUDO dnf install -y rsync
+          elif command -v zypper >/dev/null 2>&1; then
+            $SUDO zypper -n install rsync
+          elif command -v apk >/dev/null 2>&1; then
+            $SUDO apk add --no-cache rsync
+          elif command -v pacman >/dev/null 2>&1; then
+            $SUDO pacman -Sy --noconfirm rsync
+          elif command -v opkg >/dev/null 2>&1; then
+            $SUDO opkg update
+            $SUDO opkg install rsync
+          elif command -v brew >/dev/null 2>&1; then
+            # Homebrew typically doesn't use sudo
+            brew install rsync
+          else
+            echo "No supported package manager found; please install rsync manually." >&2
+            exit 1
+          fi
+          if command -v rsync >/dev/null 2>&1; then
+            echo "rsync successfully installed on remote."
+          else
+            echo "Failed to install rsync on remote." >&2
+            exit 1
+          fi
 
     - name: Rsync deploy
       uses: up9cloud/action-rsync@master

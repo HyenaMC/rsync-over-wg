@@ -21,6 +21,7 @@ Tech stack:
 - verbose: true/false to enable rsync verbose logs. Default false
 - pre_script: Optional shell to run on remote before rsync.
 - post_script: Optional shell to run on remote after rsync.
+- auto_install_rsync_on_target: If true (default), the action will attempt to install rsync on the remote host if it's missing using a detected package manager (apt, yum, dnf, apk, zypper, pacman, opkg, brew). Set to 'false' to skip.
 
 ## Example
 
@@ -49,9 +50,11 @@ jobs:
             sudo systemctl stop myapp || true
           post_script: |
             sudo systemctl start myapp && sudo systemctl status --no-pager myapp
+          auto_install_rsync_on_target: 'true'
 ```
 
 Notes
 - Provide the entire WireGuard config file content via a secret, for example by pasting your wg-quick profile into WG_CONFIG_FILE.
 - up9cloud/action-rsync accepts KEY as the private key content directly; no extra ssh-agent setup is needed.
 - Use rsync_args_more to append flags without replacing your base args.
+- If your remote doesn't have rsync, leave auto_install_rsync_on_target as 'true' (default) and ensure your user can elevate with sudo. For distros without the listed package managers or locked-down environments, set it to 'false' and pre-install rsync yourself (e.g., in pre_script).

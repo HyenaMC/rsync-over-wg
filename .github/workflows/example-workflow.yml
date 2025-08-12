@@ -38,6 +38,11 @@ on:
         required: false
         default: 'echo post-sync on $(hostname)'
         type: string
+      auto_install_rsync_on_target:
+        description: "Auto-install rsync on remote if missing"
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   deploy:
@@ -71,6 +76,7 @@ jobs:
           # Optional remote hooks
           pre_script: ${{ inputs.pre_script }}
           post_script: ${{ inputs.post_script }}
+          auto_install_rsync_on_target: ${{ inputs.auto_install_rsync_on_target }}
 
       - name: Done
         run: echo "Workflow completed. Review logs above for rsync output."
