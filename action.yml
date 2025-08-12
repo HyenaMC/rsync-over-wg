@@ -26,7 +26,11 @@ inputs:
     description: 'Local WireGuard port'
     required: false
     default: '51820'
-
+  wireguard_config:
+    description: 'Custom WireGuard configuration (overrides other WireGuard inputs)'
+    required: false
+    default: ''
+  
   # SSH Connection Parameters
   ssh_private_key:
     description: 'SSH private key for remote server'
@@ -110,20 +114,18 @@ runs:
     - name: Set execute permissions
       shell: bash
       run: |
-        chmod +x ${{ github.action_path }}/action/wireguard-setup.sh
         chmod +x ${{ github.action_path }}/action/entrypoint.sh
 
     - name: Setup WireGuard
-      shell: bash
-      run: ${{ github.action_path }}/action/wireguard-setup.sh
-      env:
-        WIREGUARD_PRIVATE_KEY: ${{ inputs.wireguard_private_key }}
-        WIREGUARD_LOCAL_IP: ${{ inputs.wireguard_local_ip }}
-        WIREGUARD_PEER_IP: ${{ inputs.wireguard_peer_ip }}
-        WIREGUARD_PEER_PUBLIC_KEY: ${{ inputs.wireguard_peer_public_key }}
-        WIREGUARD_PEER_ENDPOINT: ${{ inputs.wireguard_peer_endpoint }}
-        WIREGUARD_LOCAL_PORT: ${{ inputs.wireguard_local_port }}
-        DEBUG: ${{ inputs.debug }}
+      uses: egor-tensin/setup-wireguard@v1
+      with:
+        config: ${{ inputs.wireguard_config }}
+        private_key: ${{ inputs.wireguard_private_key }}
+        address: ${{ inputs.wireguard_local_ip }}
+        peer_public_key: ${{ inputs.wireguard_peer_public_key }}
+        peer_endpoint: ${{ inputs.wireguard_peer_endpoint }}
+        peer_allowed_ips: ${{ inputs.wireguard_peer_ip }}/32
+        listen_port: ${{ inputs.wireguard_local_port }}
         
     - name: Verify WireGuard connection
       shell: bash

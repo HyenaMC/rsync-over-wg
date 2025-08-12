@@ -1,10 +1,10 @@
 # WireGuard File Sync Action
 
-This GitHub Action connects to a WireGuard network and syncs files from a repository to a remote server.
+This GitHub Action connects to a WireGuard network and syncs files from a repository to a remote server using the `egor-tensin/setup-wireguard@v1` action for WireGuard setup.
 
 ## Features
 
-- Connect to a WireGuard network automatically
+- Connect to a WireGuard network automatically using `egor-tensin/setup-wireguard@v1`
 - Sync files from any branch or tag to a remote server
 - Two sync modes: overwrite (only update existing files) or clean_copy (delete non-existent files)
 - Flexible exclusion and protection rules
@@ -23,6 +23,7 @@ This GitHub Action connects to a WireGuard network and syncs files from a reposi
 | `wireguard_peer_public_key` | Peer WireGuard public key | Yes | - |
 | `wireguard_peer_endpoint` | Peer endpoint (e.g., 1.2.3.4:51820) | Yes | - |
 | `wireguard_local_port` | Local WireGuard port | No | 51820 |
+| `wireguard_config` | Custom WireGuard configuration (overrides other WireGuard inputs) | No | - |
 
 ### SSH Connection Parameters
 
@@ -82,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Sync files via WireGuard
-        uses: HyenaMC/wireguard-file-sync@v1.0.0
+        uses: HyenaMC/rsync-over-wg@v1
         with:
           # WireGuard parameters
           wireguard_private_key: ${{ secrets.WIREGUARD_PRIVATE_KEY }}
