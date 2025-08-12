@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Sync files via WireGuard
-        uses: your-username/wireguard-file-sync@v1
+        uses: HyenaMC/wireguard-file-sync@v1.0.0
         with:
           # WireGuard parameters
           wireguard_private_key: ${{ secrets.WIREGUARD_PRIVATE_KEY }}
