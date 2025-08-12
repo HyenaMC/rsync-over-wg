@@ -106,7 +106,13 @@ runs:
       with:
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.ref }}
-        
+
+    - name: Set execute permissions
+      shell: bash
+      run: |
+        chmod +x ${{ github.action_path }}/action/wireguard-setup.sh
+        chmod +x ${{ github.action_path }}/action/entrypoint.sh
+
     - name: Setup WireGuard
       shell: bash
       run: ${{ github.action_path }}/action/wireguard-setup.sh
