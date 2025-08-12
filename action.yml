@@ -26,6 +26,10 @@ inputs:
     description: 'Local WireGuard port'
     required: false
     default: '51820'
+  wireguard_keepalive:
+    description: 'PersistentKeepalive interval in seconds'
+    required: false
+    default: '25'
   wireguard_config:
     description: 'Custom WireGuard configuration (overrides other WireGuard inputs)'
     required: false
@@ -110,22 +114,16 @@ runs:
       with:
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.ref }}
-
-    - name: Set execute permissions
-      shell: bash
-      run: |
-        chmod +x ${{ github.action_path }}/action/entrypoint.sh
-
+        
     - name: Setup WireGuard
       uses: egor-tensin/setup-wireguard@v1
       with:
-        config: ${{ inputs.wireguard_config }}
+        endpoint: ${{ inputs.wireguard_peer_endpoint }}
+        endpoint_public_key: ${{ inputs.wireguard_peer_public_key }}
+        ips: ${{ inputs.wireguard_local_ip }}
+        allowed_ips: ${{ inputs.wireguard_peer_ip }}/32
         private_key: ${{ inputs.wireguard_private_key }}
-        address: ${{ inputs.wireguard_local_ip }}
-        peer_public_key: ${{ inputs.wireguard_peer_public_key }}
-        peer_endpoint: ${{ inputs.wireguard_peer_endpoint }}
-        peer_allowed_ips: ${{ inputs.wireguard_peer_ip }}/32
-        listen_port: ${{ inputs.wireguard_local_port }}
+        keepalive: ${{ inputs.wireguard_keepalive }}
         
     - name: Verify WireGuard connection
       shell: bash
@@ -196,5 +194,5 @@ runs:
       shell: bash
       run: |
         echo "sync_status=${{ steps.sync.outputs.status }}" >> $GITHUB_OUTPUT
-        echo "sync_files_count=${{ steps.sync.outputs.files_count }}" >> $GITHUB_OUTPUT
+        echo "sync_files_count=${{ steps.sync.outputs.sync_files_count }}" >> $GITHUB_OUTPUT
         echo "sync_bytes_transferred=${{ steps.sync.outputs.bytes_transferred }}" >> $GITHUB_OUTPUT
