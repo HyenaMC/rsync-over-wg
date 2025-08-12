@@ -1,105 +1,73 @@
-name: Example WireGuard Sync Workflow
+name: "Example: Deploy over WireGuard"
 
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Branch to sync'
+      target:
+        description: 'Remote target path'
         required: true
-        default: 'main'
+        default: '/tmp/rsync-over-wg-demo/'
         type: string
-      target_path:
-        description: 'Target path on server'
-        required: true
-        default: '/var/www/html/'
-        type: string
-      sync_mode:
-        description: 'Sync mode'
-        required: true
-        default: 'clean_copy'
-        type: choice
-        options:
-          - overwrite
-          - clean_copy
-      exclude_patterns:
-        description: 'Additional patterns to exclude'
+      source:
+        description: 'Local source path'
         required: false
-        default: 'logs/,temp/'
+        default: './'
         type: string
-      protect_patterns:
-        description: 'Patterns to protect from deletion'
-        required: false
-        default: 'uploads/,config/custom.ini'
-        type: string
-      dry_run:
-        description: 'Dry run mode'
+      rsync_delete:
+        description: 'Also delete files on remote not present locally (--delete)'
         required: false
         default: false
         type: boolean
-
-  push:
-    branches: [main]
-
-  pull_request:
-    types: [closed]
-    branches: [main]
+      rsync_dry_run:
+        description: 'Dry run (no changes)'
+        required: false
+        default: true
+        type: boolean
+      verbose:
+        description: 'Verbose logs from rsync'
+        required: false
+        default: true
+        type: boolean
+      pre_script:
+        description: 'Remote pre-sync script'
+        required: false
+        default: 'echo pre-sync on $(hostname)'
+        type: string
+      post_script:
+        description: 'Remote post-sync script'
+        required: false
+        default: 'echo post-sync on $(hostname)'
+        type: string
 
 jobs:
   deploy:
-    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
 
-      - name: Sync files via WireGuard
-        id: sync
-        uses: ./  # Use the action in the same repository
+    steps:
+      - name: Use local action to deploy
+        uses: ./
         with:
-          # WireGuard parameters
-          wireguard_private_key: ${{ secrets.WIREGUARD_PRIVATE_KEY }}
-          wireguard_local_ip: 10.8.0.7/24
-          wireguard_peer_ip: 192.168.2.124
-          wireguard_peer_public_key: ${{ secrets.WIREGUARD_PEER_PUBLIC_KEY }}
-          wireguard_peer_endpoint: ${{ secrets.WIREGUARD_PEER_ENDPOINT }}
-          
-          # SSH parameters
+          # WireGuard config content (keep in a secret)
+          wg_config_file: ${{ secrets.WG_CONFIG_FILE }}
+
+          # Remote host reachable over WireGuard (keep in a secret)
+          remote_host: ${{ secrets.WG_REMOTE_HOST }}
+
+          # SSH credentials (keep in secrets)
+          ssh_username: ${{ secrets.WG_REMOTE_USER }}
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-          ssh_user: kpajun
-          ssh_port: 22
-          
-          # Sync parameters
-          source_path: ./
-          target_path: ${{ github.event.inputs.target_path || '/var/www/html/' }}
-          sync_mode: ${{ github.event.inputs.sync_mode || 'clean_copy' }}
-          exclude_patterns: ${{ github.event.inputs.exclude_patterns }}
-          protect_patterns: ${{ github.event.inputs.protect_patterns }}
-          
-          # Git parameters
-          ref: ${{ github.event.inputs.branch || github.sha }}
-          
-          # Debug parameters
-          # dry_run: ${{ github.event.inputs.dry_run || false }}
-          dry_run: true
-          debug: true
-          
-      - name: Display sync results
-        run: |
-          echo "Sync status: ${{ steps.sync.outputs.sync_status }}"
-          echo "Files transferred: ${{ steps.sync.outputs.sync_files_count }}"
-          echo "Bytes transferred: ${{ steps.sync.outputs.sync_bytes_transferred }}"
-          
-      - name: Notify on success
-        if: steps.sync.outputs.sync_status == 'success'
-        run: |
-          echo "✅ Sync completed successfully!"
-          echo "📁 Files transferred: ${{ steps.sync.outputs.sync_files_count }}"
-          echo "📊 Bytes transferred: ${{ steps.sync.outputs.sync_bytes_transferred }}"
-          
-      - name: Notify on failure
-        if: steps.sync.outputs.sync_status == 'failure'
-        run: |
-          echo "❌ Sync failed!"
-          echo "Please check the logs above for details."
-          exit 1
+          ssh_port: ${{ secrets.WG_REMOTE_PORT }}
+
+          # Rsync settings
+          source: ${{ inputs.source }}
+          target: ${{ inputs.target }}
+          rsync_args: -az
+          rsync_args_more: "${{ inputs.rsync_delete == 'true' && '--delete' || '' }} ${{ inputs.rsync_dry_run == 'true' && '--dry-run' || '' }}"
+          verbose: ${{ inputs.verbose }}
+
+          # Optional remote hooks
+          pre_script: ${{ inputs.pre_script }}
+          post_script: ${{ inputs.post_script }}
+
+      - name: Done
+        run: echo "Workflow completed. Review logs above for rsync output."

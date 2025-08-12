@@ -1,103 +1,57 @@
-# WireGuard File Sync Action
+# Rsync over WireGuard
 
-This GitHub Action connects to a WireGuard network and syncs files from a repository to a remote server using the `egor-tensin/setup-wireguard@v1` action for WireGuard setup.
+This composite action connects to your WireGuard network using a single wg-quick config, then optionally runs pre/post SSH commands and deploys files via rsync.
 
-## Features
-
-- Connect to a WireGuard network automatically using `egor-tensin/setup-wireguard@v1`
-- Sync files from any branch or tag to a remote server
-- Two sync modes: overwrite (only update existing files) or clean_copy (delete non-existent files)
-- Flexible exclusion and protection rules
-- Dry-run mode for testing
-- Detailed output and statistics
+Tech stack:
+- WireGuard: niklaskeerl/easy-wireguard-action@v2
+- Pre/Post hooks: appleboy/ssh-action@v1.0.3
+- File sync: up9cloud/action-rsync@master
 
 ## Inputs
 
-### WireGuard Connection Parameters
+- wg_config_file (required): Full text content of your WireGuard config (the same file used by wg-quick).
+- remote_host (required): Host/IP reachable through WireGuard (e.g., 10.0.0.2).
+- ssh_username (required)
+- ssh_private_key (required)
+- ssh_port: Default 22
+- source: Local path to sync. Default ./
+- target (required): Remote path to deploy to.
+- rsync_args: Base rsync args. Default -az
+- rsync_args_more: Appended rsync args. Optional.
+- verbose: true/false to enable rsync verbose logs. Default false
+- pre_script: Optional shell to run on remote before rsync.
+- post_script: Optional shell to run on remote after rsync.
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `wireguard_private_key` | WireGuard private key | Yes | - |
-| `wireguard_local_ip` | Local WireGuard IP (e.g., 192.168.1.2/24) | Yes | - |
-| `wireguard_peer_ip` | Peer WireGuard IP (e.g., 192.168.1.1/24) | Yes | - |
-| `wireguard_peer_public_key` | Peer WireGuard public key | Yes | - |
-| `wireguard_peer_endpoint` | Peer endpoint (e.g., 1.2.3.4:51820) | Yes | - |
-| `wireguard_local_port` | Local WireGuard port | No | 51820 |
-| `wireguard_config` | Custom WireGuard configuration (overrides other WireGuard inputs) | No | - |
-
-### SSH Connection Parameters
-
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `ssh_private_key` | SSH private key for remote server | Yes | - |
-| `ssh_user` | SSH username | Yes | - |
-| `ssh_port` | SSH port | No | 22 |
-
-### Sync Parameters
-
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `source_path` | Source path in repository | No | ./ |
-| `target_path` | Target path on remote server | Yes | - |
-| `sync_mode` | Sync mode: overwrite or clean_copy | No | overwrite |
-| `exclude_patterns` | Comma-separated list of additional patterns to exclude | No | - |
-| `protect_patterns` | Comma-separated list of patterns to protect from deletion | No | - |
-| `custom_rsync_filter` | Custom rsync filter file path in repository | No | - |
-
-### Git Parameters
-
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `repository` | Repository to sync | No | Current repository |
-| `ref` | Git ref to sync (branch, tag, or SHA) | No | Current SHA |
-
-### Debug Parameters
-
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `dry_run` | Dry run mode | No | false |
-| `debug` | Enable debug output | No | false |
-
-## Outputs
-
-| Output | Description |
-|--------|-------------|
-| `sync_status` | Status of the sync operation (success/failure) |
-| `sync_files_count` | Number of files synced |
-| `sync_bytes_transferred` | Number of bytes transferred |
-
-## Usage Example
-
-### Basic Usage
+## Example
 
 ```yaml
-name: Sync to Production
+name: Deploy over WireGuard
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Sync files via WireGuard
-        uses: HyenaMC/rsync-over-wg@v1
+      - name: Deploy
+        uses: HyenaMC/rsync-over-wg@v1.0.0
         with:
-          # WireGuard parameters
-          wireguard_private_key: ${{ secrets.WIREGUARD_PRIVATE_KEY }}
-          wireguard_local_ip: 192.168.1.2/24
-          wireguard_peer_ip: 192.168.1.1/24
-          wireguard_peer_public_key: ${{ secrets.WIREGUARD_PEER_PUBLIC_KEY }}
-          wireguard_peer_endpoint: ${{ secrets.WIREGUARD_PEER_ENDPOINT }}
-          
-          # SSH parameters
+          wg_config_file: ${{ secrets.WG_CONFIG_FILE }}
+          remote_host: 10.66.66.1
+          ssh_username: ubuntu
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
-          ssh_user: ubuntu
-          ssh_port: 22
-          
-          # Sync parameters
-          source_path: ./
-          target_path: /var/www/html/
-          sync_mode: clean_copy
+          target: /var/www/html/
+          source: ./public/
+          rsync_args: -az --delete --exclude=/.git/ --exclude=/.github/
+          pre_script: |
+            sudo systemctl stop myapp || true
+          post_script: |
+            sudo systemctl start myapp && sudo systemctl status --no-pager myapp
+```
+
+Notes
+- Provide the entire WireGuard config file content via a secret, for example by pasting your wg-quick profile into WG_CONFIG_FILE.
+- up9cloud/action-rsync accepts KEY as the private key content directly; no extra ssh-agent setup is needed.
+- Use rsync_args_more to append flags without replacing your base args.

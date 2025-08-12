@@ -1,5 +1,5 @@
-# Default rsync filter file
-# This file contains patterns for files and directories that should be excluded from sync
+# Default rsync filters (merged via --filter='merge .rsync-filter')
+# Patterns to exclude from sync by default.
 
 # Git and GitHub related
 - .git/

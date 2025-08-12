@@ -1,198 +1,135 @@
 name: 'Rsync over WireGuard'
-description: 'Connect to a WireGuard network and sync files to a remote server'
+description: 'Connect to WireGuard and deploy files via rsync with optional pre/post SSH commands'
 author: 'kpAjun @HyenaMC'
 branding:
   icon: 'upload-cloud'
   color: 'blue'
 
 inputs:
-  # WireGuard Connection Parameters
-  wireguard_private_key:
-    description: 'WireGuard private key'
+  # WireGuard: provide full wg config content
+  wg_config_file:
+    description: 'WireGuard configuration file content (ini text as in wg-quick)'
     required: true
-  wireguard_local_ip:
-    description: 'Local WireGuard IP (e.g., 192.168.1.2/24)'
+
+  # Remote host reachable over WireGuard
+  remote_host:
+    description: 'Remote host or IP to connect to over WireGuard'
     required: true
-  wireguard_peer_ip:
-    description: 'Peer WireGuard IP (e.g., 192.168.1.1/24)'
+
+  # SSH authentication for remote host
+  ssh_username:
+    description: 'SSH username for remote host'
     required: true
-  wireguard_peer_public_key:
-    description: 'Peer WireGuard public key'
-    required: true
-  wireguard_peer_endpoint:
-    description: 'Peer endpoint (e.g., 1.2.3.4:51820)'
-    required: true
-  wireguard_local_port:
-    description: 'Local WireGuard port'
-    required: false
-    default: '51820'
-  wireguard_keepalive:
-    description: 'PersistentKeepalive interval in seconds'
-    required: false
-    default: '25'
-  wireguard_config:
-    description: 'Custom WireGuard configuration (overrides other WireGuard inputs)'
-    required: false
-    default: ''
-  
-  # SSH Connection Parameters
   ssh_private_key:
-    description: 'SSH private key for remote server'
-    required: true
-  ssh_user:
-    description: 'SSH username'
+    description: 'SSH private key (PEM/OpenSSH text)'
     required: true
   ssh_port:
-    description: 'SSH port'
+    description: 'SSH port on remote host'
     required: false
     default: '22'
 
-  # Rsync Parameters
-  source_path:
-    description: 'Source path in repository (default: repository root)'
+  # Rsync parameters
+  source:
+    description: 'Local source path (relative to repo)'
     required: false
     default: './'
-  target_path:
-    description: 'Target path on remote server'
+  target:
+    description: 'Remote target path'
     required: true
-  sync_mode:
-    description: 'Sync mode: overwrite (only update existing files) or clean_copy (delete non-existent files)'
+  rsync_args:
+    description: 'Base rsync arguments'
     required: false
-    default: 'overwrite'
-    type: choice
-    options:
-      - overwrite
-      - clean_copy
-  exclude_patterns:
-    description: 'Comma-separated list of additional patterns to exclude'
+    default: '-az'
+  rsync_args_more:
+    description: 'Additional rsync arguments appended to rsync_args'
     required: false
     default: ''
-  protect_patterns:
-    description: 'Comma-separated list of patterns to protect from deletion'
-    required: false
-    default: ''
-  custom_rsync_filter:
-    description: 'Custom rsync filter file path in repository'
-    required: false
-    default: ''
-
-  # Git Parameters
-  repository:
-    description: 'Repository to sync (default: current repository)'
-    required: false
-    default: ${{ github.repository }}
-  ref:
-    description: 'Git ref to sync (branch, tag, or SHA)'
-    required: false
-    default: ${{ github.sha }}
-
-  # Debug Parameters
-  dry_run:
-    description: 'Dry run mode (show what would be done without actually doing it)'
+  verbose:
+    description: 'Enable verbose logs from rsync action'
     required: false
     default: 'false'
-    type: boolean
-  debug:
-    description: 'Enable debug output'
-    required: false
-    default: 'false'
-    type: boolean
 
-outputs:
-  sync_status:
-    description: 'Status of the sync operation (success/failure)'
-  sync_files_count:
-    description: 'Number of files synced'
-  sync_bytes_transferred:
-    description: 'Number of bytes transferred'
+  # Rsync filter
+  rsync_filter_path:
+    description: 'Path to an rsync filter file in the repository; defaults to built-in action/rsync-filter'
+    required: false
+    default: ''
+
+  # Optional remote hooks
+  pre_script:
+    description: 'Remote shell script to run before rsync'
+    required: false
+    default: ''
+  post_script:
+    description: 'Remote shell script to run after rsync'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
   steps:
-    - name: Checkout code
+    - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Set up WireGuard (wg-quick)
+      uses: niklaskeerl/easy-wireguard-action@v2
       with:
-        repository: ${{ inputs.repository }}
-        ref: ${{ inputs.ref }}
-        
-    - name: Setup WireGuard
-      uses: egor-tensin/setup-wireguard@v1
-      with:
-        endpoint: ${{ inputs.wireguard_peer_endpoint }}
-        endpoint_public_key: ${{ inputs.wireguard_peer_public_key }}
-        ips: ${{ inputs.wireguard_local_ip }}
-        allowed_ips: ${{ inputs.wireguard_peer_ip }}/32
-        private_key: ${{ inputs.wireguard_private_key }}
-        keepalive: ${{ inputs.wireguard_keepalive }}
-        
-    - name: Verify WireGuard connection
+        WG_CONFIG_FILE: ${{ inputs.wg_config_file }}
+
+    - name: Verify WireGuard link
       shell: bash
       run: |
-        sudo wg show
-        ping -c 3 ${{ inputs.wireguard_peer_ip }}
-        
-    - name: Setup SSH key
-      shell: bash
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ inputs.ssh_private_key }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -p ${{ inputs.ssh_port }} ${{ inputs.wireguard_peer_ip }} >> ~/.ssh/known_hosts
-        
+        set -e
+        sudo wg show || true
+        ping -c 3 ${{ inputs.remote_host }} || true
+
     - name: Prepare rsync filter
       shell: bash
       run: |
-        if [ -n "${{ inputs.custom_rsync_filter }}" ] && [ -f "${{ inputs.custom_rsync_filter }}" ]; then
-          echo "Using custom rsync filter file: ${{ inputs.custom_rsync_filter }}"
-          cp "${{ inputs.custom_rsync_filter }}" .rsync-filter
+        set -e
+        # Determine filter source
+        if [ -n "${{ inputs.rsync_filter_path }}" ] && [ -f "${{ inputs.rsync_filter_path }}" ]; then
+          echo "Using custom rsync filter: ${{ inputs.rsync_filter_path }}"
+          cp "${{ inputs.rsync_filter_path }}" .rsync-filter
         else
-          echo "Using default rsync filter"
-          cp "${{ github.action_path }}/action/rsync-filter" .rsync-filter
+          echo "Using built-in default filter: action/rsync-filters"
+          cp "${{ github.action_path }}/action/rsync-filters" .rsync-filter
         fi
-        
-        # Add additional exclude patterns
-        if [ -n "${{ inputs.exclude_patterns }}" ]; then
-          IFS=',' read -ra PATTERNS <<< "${{ inputs.exclude_patterns }}"
-          for pattern in "${PATTERNS[@]}"; do
-            pattern=$(echo "$pattern" | xargs)  # trim whitespace
-            if [ -n "$pattern" ]; then
-              echo "- $pattern" >> .rsync-filter
-            fi
-          done
-        fi
-        
-        # Add protect patterns
-        if [ -n "${{ inputs.protect_patterns }}" ]; then
-          IFS=',' read -ra PATTERNS <<< "${{ inputs.protect_patterns }}"
-          for pattern in "${PATTERNS[@]}"; do
-            pattern=$(echo "$pattern" | xargs)  # trim whitespace
-            if [ -n "$pattern" ]; then
-              echo "protect $pattern" >> .rsync-filter
-              echo "protect $pattern/**" >> .rsync-filter
-            fi
-          done
-        fi
-        
-        echo "Final rsync filter content:"
-        cat .rsync-filter
-        
-    - name: Execute sync
-      id: sync
-      shell: bash
-      run: ${{ github.action_path }}/action/entrypoint.sh
+        echo "Final .rsync-filter contents:" && cat .rsync-filter
+
+    - name: Pre-sync remote commands
+      if: ${{ inputs.pre_script != '' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.remote_host }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_private_key }}
+        port: ${{ inputs.ssh_port }}
+        script: |
+          set -e
+          ${{ inputs.pre_script }}
+
+    - name: Rsync deploy
+      uses: up9cloud/action-rsync@master
       env:
-        SOURCE_PATH: ${{ inputs.source_path }}
-        TARGET_PATH: ${{ inputs.target_path }}
-        SYNC_MODE: ${{ inputs.sync_mode }}
-        SSH_USER: ${{ inputs.ssh_user }}
-        SSH_PORT: ${{ inputs.ssh_port }}
-        PEER_IP: ${{ inputs.wireguard_peer_ip }}
-        DRY_RUN: ${{ inputs.dry_run }}
-        DEBUG: ${{ inputs.debug }}
-        
-    - name: Set outputs
-      shell: bash
-      run: |
-        echo "sync_status=${{ steps.sync.outputs.status }}" >> $GITHUB_OUTPUT
-        echo "sync_files_count=${{ steps.sync.outputs.sync_files_count }}" >> $GITHUB_OUTPUT
-        echo "sync_bytes_transferred=${{ steps.sync.outputs.bytes_transferred }}" >> $GITHUB_OUTPUT
+        HOST: ${{ inputs.remote_host }}
+        USER: ${{ inputs.ssh_username }}
+        KEY: ${{ inputs.ssh_private_key }}
+        PORT: ${{ inputs.ssh_port }}
+        SOURCE: ${{ inputs.source }}
+        TARGET: ${{ inputs.target }}
+        VERBOSE: ${{ inputs.verbose }}
+        ARGS: ${{ inputs.rsync_args }}
+        ARGS_MORE: "--filter='merge .rsync-filter' ${{ inputs.rsync_args_more }}"
+
+    - name: Post-sync remote commands
+      if: ${{ inputs.post_script != '' }}
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.remote_host }}
+        username: ${{ inputs.ssh_username }}
+        key: ${{ inputs.ssh_private_key }}
+        port: ${{ inputs.ssh_port }}
+        script: |
+          set -e
+          ${{ inputs.post_script }}
