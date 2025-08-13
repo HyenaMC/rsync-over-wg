@@ -207,7 +207,16 @@ runs:
           for i in $ifaces; do
             if [ -n "$i" ]; then
               echo "Bringing down WireGuard interface: $i"
-              sudo wg-quick down "$i" || true
+              if ! sudo wg-quick down "$i"; then
+                echo "wg-quick down failed for $i; trying to remove link and routes manually"
+                # Kill wg device to ensure no residual tunnel stays up
+                sudo ip link set dev "$i" down 2>/dev/null || true
+                sudo ip link delete "$i" 2>/dev/null || true
+                # Remove any routes that still reference the interface
+                for cidr in $(ip -o route | awk '/ dev '\''"$i"'\''/ {print $1}'); do
+                  sudo ip route del "$cidr" dev "$i" 2>/dev/null || true
+                done
+              fi
             fi
           done
         fi
