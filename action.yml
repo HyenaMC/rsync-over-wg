@@ -180,7 +180,7 @@ runs:
         TARGET: ${{ inputs.target }}
         VERBOSE: ${{ inputs.verbose }}
         ARGS: ${{ inputs.rsync_args }}
-        ARGS_MORE: "--filter='merge .rsync-filter' ${{ inputs.rsync_args_more }}"
+        ARGS_MORE: "--exclude='/.rsync-filter' --exclude='/wg0.conf' --filter='merge .rsync-filter' ${{ inputs.rsync_args_more }}"
 
     - name: Post-sync remote commands
       if: ${{ inputs.post_script != '' }}
@@ -222,3 +222,10 @@ runs:
         fi
         # Print routes after teardown (helps diagnose default route issues)
         ip route || true
+
+    - name: Cleanup WireGuard config file cache
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        set -e
+        rm -f wg0.conf || true
