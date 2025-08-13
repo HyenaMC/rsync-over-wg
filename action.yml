@@ -193,3 +193,23 @@ runs:
         script: |
           set -e
           ${{ inputs.post_script }}
+
+    - name: Disconnect WireGuard
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        set -e
+        # Show current WireGuard interfaces (for logs)
+        if command -v wg >/dev/null 2>&1; then
+          echo "Existing WireGuard interfaces before teardown:"
+          sudo wg show || true
+          ifaces=$(sudo wg show interfaces 2>/dev/null || true)
+          for i in $ifaces; do
+            if [ -n "$i" ]; then
+              echo "Bringing down WireGuard interface: $i"
+              sudo wg-quick down "$i" || true
+            fi
+          done
+        fi
+        # Print routes after teardown (helps diagnose default route issues)
+        ip route || true
