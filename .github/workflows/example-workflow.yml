@@ -70,7 +70,7 @@ jobs:
           source: ${{ inputs.source }}
           target: ${{ inputs.target }}
           rsync_args: -az
-          rsync_args_more: "${{ inputs.rsync_delete == 'true' && '--delete' || '' }} ${{ inputs.rsync_dry_run == 'true' && '--dry-run' || '' }}"
+          rsync_args_more: "${{ inputs.rsync_delete && '--delete' || '' }} ${{ inputs.rsync_dry_run && '--dry-run' || '' }}"
           verbose: ${{ inputs.verbose }}
 
           # Optional remote hooks
